@@ -1,0 +1,79 @@
+---
+- name: Set up local APT repository
+  hosts: apt-server
+  become: yes
+  tasks:
+    - name: Install required packages
+      apt:
+        name: 
+          - dpkg-dev
+          - apache2
+        state: present
+        update_cache: yes
+
+    - name: Create repository directory
+      file:
+        path: /var/www/html/apt-repo
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: Copy packages to repository
+      copy:
+        src: /path/to/your/packages/
+        dest: /var/www/html/apt-repo/
+        owner: www-data
+        group: www-data
+        mode: '0644'
+        remote_src: yes
+
+    - name: Create Packages.gz
+      command: >
+        bash -c "cd /var/www/html/apt-repo && dpkg-scanpackages . /dev/null | gzip -9c > Packages.gz"
+
+    - name: Create Release file
+      copy:
+        content: |
+          Origin: Your-Repo
+          Label: Your-Repo
+          Suite: stable
+          Version: 1.0
+          Codename: bionic
+          Architectures: amd64
+          Components: main
+          Description: Your local APT repository
+        dest: /var/www/html/apt-repo/Release
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: Configure Apache to serve the repository
+      copy:
+        content: |
+          <VirtualHost *:80>
+              ServerAdmin webmaster@localhost
+              DocumentRoot /var/www/html/apt-repo
+              <Directory /var/www/html/apt-repo>
+                  Options Indexes FollowSymLinks
+                  AllowOverride None
+                  Require all granted
+              </Directory>
+              ErrorLog ${APACHE_LOG_DIR}/error.log
+              CustomLog ${APACHE_LOG_DIR}/access.log combined
+          </VirtualHost>
+        dest: /etc/apache2/sites-available/apt-repo.conf
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Enable apt-repo site
+      command: a2ensite apt-repo.conf
+
+    - name: Disable default site
+      command: a2dissite 000-default.conf
+
+    - name: Reload Apache
+      service:
+        name: apache2
+        state: reloaded
